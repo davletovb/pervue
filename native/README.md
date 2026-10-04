@@ -1,6 +1,6 @@
 # TabBeam Native Host
 
-Reusable provider-runtime primitives now live in the standalone [Seatline](https://github.com/davletovb/seatline) repository, pinned by this workspace to `e021c2acf05132073d82bf3e2149f1ff64f1f49f`. TabBeam owns browser policy, conversations, Native Messaging, packaging, and product-facing diagnostics.
+Reusable provider-runtime primitives now live in the standalone [Seatline](https://github.com/davletovb/seatline) repository, pinned by this workspace to one exact revision (see `native/Cargo.toml`; `scripts/check-seatline-pin.mjs` keeps CI's installs on the same one). TabBeam owns browser policy, conversations, Native Messaging, packaging, and product-facing diagnostics.
 
 This directory contains the native Rust companion/host.
 

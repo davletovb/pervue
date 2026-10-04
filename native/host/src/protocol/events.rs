@@ -435,12 +435,21 @@ mod tests {
                 capabilities: runtime_capabilities(Capability::Supported),
                 models: std::borrow::Cow::Borrowed(&[]),
                 sign_in: Some(seatline_core::turn::SignInClassification::ApiKey),
+                readiness: Some(seatline_core::readiness::Readiness {
+                    source: seatline_core::readiness::Source::Cached,
+                    age_ms: 1_200,
+                }),
             },
             HostCapabilities::TABBEAM,
         );
         let wire = serde_json::to_string(&state).unwrap();
         assert!(
             !wire.contains("sign_in") && !wire.contains("api_key"),
+            "{wire}"
+        );
+        // Seatline's readiness record is the runtime's, not protocol v1's.
+        assert!(
+            !wire.contains("readiness") && !wire.contains("age_ms"),
             "{wire}"
         );
         assert!(!wire.contains("models"), "an empty list is omitted: {wire}");

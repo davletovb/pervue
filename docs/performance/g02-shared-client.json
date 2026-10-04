@@ -1,0 +1,46 @@
+{
+  "rounds": 8,
+  "asks_per_host": 20,
+  "provider": "fake codex (shell script)",
+  "machine": "linux x64, 4 x Intel(R) Xeon(R) Processor @ 2.10GHz, node v22.22.0",
+  "result": {
+    "shared": {
+      "first_ask_of_a_host": {
+        "n": 8,
+        "median_ms": 21.6,
+        "p95_ms": 22.2,
+        "max_ms": 22.2
+      },
+      "later_asks": {
+        "n": 152,
+        "median_ms": 21.5,
+        "p95_ms": 26,
+        "max_ms": 32.1
+      },
+      "threads_after_asks": 3,
+      "with_six_in_flight": {
+        "sockets": 1,
+        "threads": 3
+      }
+    },
+    "per-exchange": {
+      "first_ask_of_a_host": {
+        "n": 8,
+        "median_ms": 22,
+        "p95_ms": 32.2,
+        "max_ms": 32.2
+      },
+      "later_asks": {
+        "n": 152,
+        "median_ms": 21.7,
+        "p95_ms": 22.2,
+        "max_ms": 32.1
+      },
+      "threads_after_asks": 2,
+      "with_six_in_flight": {
+        "sockets": 4,
+        "threads": 6
+      }
+    }
+  }
+}

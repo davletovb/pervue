@@ -1,5 +1,7 @@
 //! Launch-shape checks for the `tabbeam-host` binary.
 
+#[cfg(feature = "shared-companion")]
+use std::io::Read;
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
@@ -11,11 +13,12 @@ const ORIGIN: &str = "chrome-extension://abcdefghijklmnopabcdefghijklmnop/";
     clippy::disallowed_methods,
     reason = "these tests start the built host binary; the spawn guard is for the host itself"
 )]
-fn run_host(args: &[&str], stdin: &[u8]) -> Output {
+fn host_command(args: &[&str]) -> Command {
     // An empty provider search path: whatever is installed on this machine,
     // the host finds no provider executables.
     let no_providers = std::env::temp_dir().join("tabbeam-cli-tests-no-providers");
-    let mut child = Command::new(HOST)
+    let mut command = Command::new(HOST);
+    command
         .args(args)
         .env("TABBEAM_PROVIDER_PATH", no_providers)
         .env(
@@ -24,12 +27,67 @@ fn run_host(args: &[&str], stdin: &[u8]) -> Output {
         )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn tabbeam-host");
+        .stderr(Stdio::piped());
+    command
+}
+
+fn run_host(args: &[&str], stdin: &[u8]) -> Output {
+    let mut child = host_command(args).spawn().expect("spawn tabbeam-host");
     // The host may exit before reading stdin (for example on a usage error).
     let _ = child.stdin.take().expect("stdin").write_all(stdin);
     child.wait_with_output().expect("wait for tabbeam-host")
+}
+
+#[cfg(feature = "shared-companion")]
+/// Runs the host with `request` and keeps its input open until it has ended
+/// the request `request_id`, as Chrome keeps the port open while a request
+/// runs: input that ends first cancels the request. Returns every frame the
+/// host wrote.
+fn run_host_until_ended(args: &[&str], request: &[u8], request_id: &str) -> Vec<serde_json::Value> {
+    let mut child = host_command(args).spawn().expect("spawn tabbeam-host");
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(request).expect("write the request");
+    let mut stdout = child.stdout.take().expect("stdout");
+    let (sender, received) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut prefix = [0_u8; 4];
+        while stdout.read_exact(&mut prefix).is_ok() {
+            let mut payload = vec![0_u8; u32::from_ne_bytes(prefix) as usize];
+            if stdout.read_exact(&mut payload).is_err() {
+                break;
+            }
+            let frame: serde_json::Value = serde_json::from_slice(&payload).expect("a frame");
+            if sender.send(frame).is_err() {
+                break;
+            }
+        }
+    });
+    let mut frames = Vec::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let wait = deadline.saturating_duration_since(std::time::Instant::now());
+        match received.recv_timeout(wait) {
+            Ok(frame) => {
+                let ended = frame["request_id"] == request_id
+                    && frame["event"]
+                        .as_str()
+                        .is_some_and(|event| event.starts_with("response."));
+                frames.push(frame);
+                if ended {
+                    break;
+                }
+            }
+            Err(error) => {
+                let _ = child.kill();
+                panic!("the host did not end {request_id}: {error}; frames: {frames:?}");
+            }
+        }
+    }
+    drop(stdin);
+    child.wait().expect("wait for tabbeam-host");
+    reader.join().expect("the reader ends with the host");
+    frames.extend(received);
+    frames
 }
 
 fn frame(payload: &str) -> Vec<u8> {
@@ -264,11 +322,13 @@ fn the_logged_exit_code_matches_the_process() {
 #[test]
 fn the_shared_host_refuses_provider_work_without_an_app_grant() {
     let request = r#"{"version":1,"type":"request","request_id":"req_a","method":"provider.status","payload":{"provider_id":"codex"}}"#;
-    let output = run_host(&[ORIGIN], &frame(request));
-    let frames = frames_only(&output.stdout);
+    // The refusal comes from the shared connection's own thread, a moment after
+    // the request, so the input stays open until it arrives.
+    let frames = run_host_until_ended(&[ORIGIN], &frame(request), "req_a");
     assert!(
         frames
             .iter()
-            .any(|value| value["payload"]["error"]["reason"] == "APP_NOT_AUTHORIZED")
+            .any(|value| value["payload"]["error"]["reason"] == "APP_NOT_AUTHORIZED"),
+        "{frames:?}"
     );
 }

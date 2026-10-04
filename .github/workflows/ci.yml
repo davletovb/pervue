@@ -62,7 +62,7 @@ jobs:
       - name: Install shared broker for the round trip
         shell: bash
         run: |
-          cargo +stable install --root "$RUNNER_TEMP/seatline-install" --git https://github.com/davletovb/seatline --rev dc1086582c8b98498aa48dae91c8d174bc3cfc3c --locked seatline-companion
+          cargo +stable install --root "$RUNNER_TEMP/seatline-install" --git https://github.com/davletovb/seatline --rev 0cb105e4c4d753abf8fb305d8ccedeeb64dd0ef4 --locked seatline-companion
           seatline_bin="$RUNNER_TEMP/seatline-install/bin/seatline-companion"
           "$seatline_bin" install
           "$seatline_bin" authorize tabbeam codex,claude,gemini,grok chrome-extension://abcdefghijklmnopabcdefghijklmnop/ --cache-title=TabBeam --allow-provider-default
@@ -77,6 +77,13 @@ jobs:
         env:
           SEATLINE_BIN: ${{ runner.temp }}/seatline-install/bin/seatline-companion
         run: node scripts/validate-brokered-ask.mjs --companion "$SEATLINE_BIN" --host native/target/debug/tabbeam-host
+      # One host process serves many requests over its life, several at once.
+      # This runs them side by side through one host and the broker and checks the
+      # host keeps a single connection to it, however many requests are in flight.
+      - name: Run requests side by side through one host and the broker
+        env:
+          SEATLINE_BIN: ${{ runner.temp }}/seatline-install/bin/seatline-companion
+        run: node scripts/validate-brokered-concurrency.mjs --companion "$SEATLINE_BIN" --host native/target/debug/tabbeam-host
 
   macos-package:
     name: macOS package install and removal (${{ matrix.os }})
@@ -315,7 +322,7 @@ jobs:
       - name: Install and authorize the shared provider broker
         shell: bash
         run: |
-          cargo install --root "$RUNNER_TEMP/seatline-install" --git https://github.com/davletovb/seatline --rev dc1086582c8b98498aa48dae91c8d174bc3cfc3c --locked seatline-companion
+          cargo install --root "$RUNNER_TEMP/seatline-install" --git https://github.com/davletovb/seatline --rev 0cb105e4c4d753abf8fb305d8ccedeeb64dd0ef4 --locked seatline-companion
           seatline_bin="$RUNNER_TEMP/seatline-install/bin/seatline-companion"
           "$seatline_bin" install
           "$seatline_bin" authorize tabbeam codex,claude,gemini,grok --cache-title=TabBeam --allow-provider-default

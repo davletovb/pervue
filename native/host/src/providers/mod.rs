@@ -132,13 +132,39 @@ pub trait ConversationProvider {
     }
 }
 
+/// The application name TabBeam's grant in the shared companion is under.
 #[cfg(feature = "shared-companion")]
-fn installed_provider(metadata: impl Provider) -> seatline_companion::client::RemoteProvider {
-    seatline_companion::client::RemoteProvider::new("tabbeam", &metadata)
+const APP: &str = "tabbeam";
+
+/// The host's connection to the shared companion: one runtime thread and one
+/// authenticated connection for the whole host, over which every provider's
+/// requests travel side by side however many are in flight. It connects when
+/// the first request needs it. A host built without the shared companion runs
+/// the adapters itself and has no connection.
+struct Link {
+    #[cfg(feature = "shared-companion")]
+    client: seatline_companion::remote::RemoteClient,
+}
+
+impl Link {
+    fn new() -> Self {
+        Self {
+            #[cfg(feature = "shared-companion")]
+            client: seatline_companion::remote::RemoteClient::new(APP),
+        }
+    }
+}
+
+#[cfg(feature = "shared-companion")]
+fn installed_provider(
+    link: &Link,
+    metadata: impl Provider,
+) -> seatline_companion::client::RemoteProvider {
+    seatline_companion::client::RemoteProvider::with_client(APP, link.client.clone(), &metadata)
 }
 
 #[cfg(not(feature = "shared-companion"))]
-fn installed_provider(provider: impl Provider) -> impl Provider {
+fn installed_provider<P: Provider>(_: &Link, provider: P) -> P {
     provider
 }
 
@@ -155,25 +181,26 @@ impl Providers {
     /// platform discovery rules.
     pub fn installed(layout: &Layout) -> Self {
         let data = layout.data_dir();
+        let link = Link::new();
         let sessions = |name: &str| SessionStore::new(data.as_ref().map(|dir| dir.join(name)));
         Self(vec![
             Box::new(fake::Fake),
             // Codex refuses to start a conversation it couldn't resume after a
             // restart; Claude keeps one in memory when there is no directory.
             Box::new(Conversations::new(
-                installed_provider(codex::Codex::installed(layout)),
+                installed_provider(&link, codex::Codex::installed(layout)),
                 sessions("codex-sessions").with_durability(Durability::Required),
             )),
             Box::new(Conversations::new(
-                installed_provider(claude::Claude::installed(layout)),
+                installed_provider(&link, claude::Claude::installed(layout)),
                 sessions("claude-sessions"),
             )),
             Box::new(Conversations::new(
-                installed_provider(gemini::Gemini::installed(layout)),
+                installed_provider(&link, gemini::Gemini::installed(layout)),
                 SessionStore::new(None),
             )),
             Box::new(Conversations::new(
-                installed_provider(grok::Grok::installed(layout)),
+                installed_provider(&link, grok::Grok::installed(layout)),
                 SessionStore::new(None),
             )),
         ])

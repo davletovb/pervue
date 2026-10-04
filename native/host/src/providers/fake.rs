@@ -31,6 +31,7 @@ pub const STATUS: ProviderState = ProviderState {
     },
     models: Cow::Borrowed(&[]),
     sign_in: None,
+    readiness: None,
 };
 
 pub struct Fake;
